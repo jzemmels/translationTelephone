@@ -1,0 +1,113 @@
+---
+title: "R Notebook"
+---
+
+```{r setup}
+library(reticulate)
+library(tidyverse)
+
+# to install argostranslate python package
+# reticulate::py_install("argostranslate",pip = TRUE)
+
+argostranslate <- reticulate::import("argostranslate")
+```
+
+```{r}
+# not sure what this line does, but it seems necessary
+argostranslate$package$update_package_index()
+
+# downloads and installs all available translation packages from the website
+argostranslate$package$get_available_packages() %>%
+  walk(function(dat){
+    
+    print(dat)
+    
+    download_path <- dat$download()
+    argostranslate$package$install_from_path(download_path)
+    
+  })
+```
+
+```{r}
+# alternatively, the translators folder contains pre-downloaded packages
+list.files("../translators/",full.names = TRUE) %>%
+  walk(function(download_path){
+    
+    print(download_path)
+    
+    argostranslate$package$install_from_path(download_path)
+    
+  })
+```
+
+```{r}
+installed_languages <- argostranslate$translate$get_installed_languages()
+
+reticulate::py_save_object(installed_languages,filename = "../data/installedLanguages")
+```
+
+```{r}
+installed_languages <- reticulate::py_load_object("../data/installedLanguages")
+```
+
+```{r}
+allTranslators <- installed_languages %>%
+  map_dfr(function(dat){
+    
+    fromTranslations <- map_dfr(dat$translations_from,
+            function(dat1){
+              
+              tibble(from_lang = dat1$from_lang$name,
+                     to_lang = dat1$to_lang$name,
+                     translator = list(dat1$translate))
+              
+            })
+    
+    toTranslations <- map_dfr(dat$translations_to,
+            function(dat1){
+              
+              tibble(from_lang = dat1$from_lang$name,
+                     to_lang = dat1$to_lang$name,
+                     translator = list(dat1$translate))
+              
+            })
+    
+    bind_rows(fromTranslations,toTranslations)
+    
+  }) %>%
+  arrange(from_lang,to_lang) %>%
+  slice(seq(1,nrow(.),by = 2)) %>%
+  reticulate::r_to_py()
+
+reticulate::py_save_object(allTranslators,filename = "../data/allTranslators")
+```
+
+```{r}
+phrase <- "A bird in the hand is worth two in the bush"
+
+phrase_split <- str_split(phrase,pattern = " ")[[1]]
+
+phrase_split
+
+allTranslators %>%
+  filter(from_lang == "English" & to_lang == "French") %>%
+  pull(translator)
+```
+
+
+
+
+
+
+
+Below is some code to pull common English idioms from a website
+
+```{r}
+englishIdioms <- rvest::read_html("https://www.ef.edu/english-resources/english-idioms/") %>%
+  rvest::html_elements("body") %>%
+  rvest::html_table() %>%
+  .[[1]]
+
+save(englishIdioms,file = "../data/englishIdioms.RData")
+```
+
